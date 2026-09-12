@@ -29,6 +29,7 @@ jobs:
         run: |
           cordova create app com.mafiaioz.app "Mafia IOZ"
           cp www/index.html app/www/index.html
+          if [ -f www/mafia_theme.m4a ]; then cp www/mafia_theme.m4a app/www/mafia_theme.m4a; fi
           cd app
           cordova platform add android
 
