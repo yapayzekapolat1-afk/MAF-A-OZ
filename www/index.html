@@ -411,6 +411,13 @@
     </div>
   </div>
 
+  <!--
+    Background music: put your own audio file next to this HTML file
+    (same folder, e.g. /www/mafia_theme.m4a) and it will play automatically.
+    Nothing is embedded here — this just points at a local file.
+  -->
+  <audio id="bgMusic" src="mafia_theme.m4a" loop preload="auto"></audio>
+
   <div class="content">
     <div class="brand">
       <h1 id="titleH1">
@@ -487,222 +494,30 @@
     } catch (e) {}
   })();
 
-  /* ================= MAFIA IOZ — original procedural score =================
-     Fully synthesized (no samples/copyrighted audio). Richer than a plain
-     chiptune: layered detuned voices, a soft algorithmic reverb send, a
-     sustained pad under the melody, and a limiter/makeup chain so the whole
-     thing can run loud without turning into distortion.
+  /* ================= MAFIA IOZ — background score =================
+     Plays a real audio file the user supplies locally (not embedded here).
+     Put your track next to this HTML file, e.g.  /www/mafia_theme.m4a
+     Loud by default, loops, simple play/pause — no synth, no crackling.
   */
+  const bgMusic = document.getElementById('bgMusic');
+  bgMusic.volume = 1.0;
+
   const MafiaAudio = (() => {
-    let ctx = null, master = null, comp = null, makeup = null, reverb = null, reverbSend = null;
-    let started = false, muted = false, loopTimer = null, stepIndex = 0;
-
-    function buildImpulse(seconds, decay) {
-      const len = ctx.sampleRate * seconds;
-      const buf = ctx.createBuffer(2, len, ctx.sampleRate);
-      for (let ch = 0; ch < 2; ch++) {
-        const d = buf.getChannelData(ch);
-        for (let i = 0; i < len; i++) {
-          d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
-        }
-      }
-      return buf;
-    }
-
-    function init() {
-      if (ctx) return;
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
-
-      // limiter-style compressor so we can push volume without harsh clipping
-      comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -22;
-      comp.knee.value = 28;
-      comp.ratio.value = 10;
-      comp.attack.value = 0.003;
-      comp.release.value = 0.22;
-
-      // makeup gain after the limiter — this is what makes it feel LOUD
-      makeup = ctx.createGain();
-      makeup.gain.value = 1.9;
-
-      master = ctx.createGain();
-      master.gain.value = 1.15;
-
-      // small hall-style reverb send for depth/space (kills the flat "retro" feel)
-      reverb = ctx.createConvolver();
-      reverb.buffer = buildImpulse(1.8, 2.4);
-      reverbSend = ctx.createGain();
-      reverbSend.gain.value = 0.55;
-
-      master.connect(comp);
-      master.connect(reverbSend);
-      reverbSend.connect(reverb);
-      reverb.connect(comp);
-      comp.connect(makeup);
-      makeup.connect(ctx.destination);
-    }
-
-    // warm low drone — layered detuned sines/triangles for width, not a bare tone
-    function startDrone() {
-      const g = ctx.createGain();
-      g.gain.value = 0;
-      g.connect(master);
-
-      [[55, 'sine', 0], [55.4, 'triangle', -6], [110.3, 'triangle', 6], [82.5, 'sine', 0]]
-        .forEach(([freq, type, pan]) => {
-          const o = ctx.createOscillator();
-          o.type = type; o.frequency.value = freq;
-          const p = ctx.createStereoPanner();
-          p.pan.value = pan / 12;
-          o.connect(p); p.connect(g);
-          o.start();
-        });
-
-      const lfo = ctx.createOscillator();
-      lfo.frequency.value = 0.08;
-      const lfoGain = ctx.createGain();
-      lfoGain.gain.value = 2;
-      lfo.connect(lfoGain); lfoGain.connect(g.gain);
-      lfo.start();
-
-      const now = ctx.currentTime;
-      g.gain.linearRampToValueAtTime(0.2, now + 3.2);
-    }
-
-    // one dramatic stab, timed to "İçeriye gel!"
-    function stinger(at) {
-      const now = ctx.currentTime + at;
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(100, now);
-      o.frequency.exponentialRampToValueAtTime(42, now + 0.6);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, now);
-      g.gain.exponentialRampToValueAtTime(0.9, now + 0.04);
-      g.gain.exponentialRampToValueAtTime(0.001, now + 1.1);
-      o.connect(g); g.connect(master);
-      o.start(now); o.stop(now + 1.2);
-
-      [220.00, 261.63, 311.13, 440.0].forEach((f) => {
-        const so = ctx.createOscillator();
-        so.type = 'triangle';
-        so.frequency.value = f;
-        const sg = ctx.createGain();
-        sg.gain.setValueAtTime(0.0001, now);
-        sg.gain.exponentialRampToValueAtTime(0.14, now + 0.05);
-        sg.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
-        so.connect(sg); sg.connect(master);
-        so.start(now); so.stop(now + 1.5);
-      });
-    }
-
-    // heartbeat pulse — punchier now that there's headroom via the limiter
-    function kick(t) {
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(115, t);
-      o.frequency.exponentialRampToValueAtTime(46, t + 0.16);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.55, t + 0.012);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-      o.connect(g); g.connect(master);
-      o.start(t); o.stop(t + 0.32);
-    }
-
-    // one melody note — 3 detuned voices (sine + 2 triangles) instead of a bare
-    // sine/triangle pair. The slight detune is what removes the "8-bit" flatness.
-    function note(t, freq, dur, vol) {
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.linearRampToValueAtTime(vol, t + 0.035);
-      g.gain.setValueAtTime(vol, t + dur * 0.55);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      g.connect(master);
-
-      [[1, 'sine', 0, 1], [1.003, 'triangle', -8, 0.4], [0.998, 'triangle', 8, 0.4]]
-        .forEach(([ratio, type, pan, mix]) => {
-          const o = ctx.createOscillator();
-          o.type = type; o.frequency.value = freq * ratio;
-          const p = ctx.createStereoPanner();
-          p.pan.value = pan / 14;
-          const vg = ctx.createGain();
-          vg.gain.value = mix;
-          o.connect(vg); vg.connect(p); p.connect(g);
-          o.start(t); o.stop(t + dur + 0.05);
-        });
-    }
-
-    // sustained pad chord under the melody — this is what makes it feel like a
-    // real cinematic score bed instead of a single chiptune lead line
-    function padChord(t, freqs, dur, vol) {
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.linearRampToValueAtTime(vol, t + dur * 0.3);
-      g.gain.linearRampToValueAtTime(0.0001, t + dur);
-      g.connect(master);
-      freqs.forEach((f, i) => {
-        const o = ctx.createOscillator();
-        o.type = i === 0 ? 'sine' : 'triangle';
-        o.frequency.value = f;
-        o.connect(g);
-        o.start(t); o.stop(t + dur + 0.1);
-      });
-    }
-
-    // repeating tense minor-key theme (A natural minor, brooding contour)
-    const THEME = [
-      [220.00, 1], [246.94, 0.5], [261.63, 0.5], [246.94, 1],
-      [220.00, 1], [196.00, 1],
-      [261.63, 1], [293.66, 0.5], [329.63, 0.5], [293.66, 1],
-      [261.63, 1], [220.00, 1],
-    ];
-    // one pad chord per 4-beat bar, matched loosely to the theme's harmony
-    const CHORDS = [
-      [220.00, 261.63, 329.63],   // A minor
-      [196.00, 246.94, 293.66],   // G major (tension lift)
-      [220.00, 277.18, 329.63],   // A minor(ish) with raised 3rd for unease
-      [174.61, 220.00, 261.63],   // F major
-    ];
-
-    function scheduleLoop() {
-      const beat = 0.42;
-      let barBeat = 0, barIndex = 0;
-      function step() {
-        if (muted || !ctx) return;
-        const t = ctx.currentTime + 0.05;
-        const beatInBar = stepIndex % 4;
-
-        if (beatInBar === 0) {
-          padChord(t, CHORDS[barIndex % CHORDS.length], beat * 4, 0.1);
-          barIndex++;
-        }
-        if (beatInBar === 0 || beatInBar === 2) kick(t);
-
-        const [freq, beats] = THEME[stepIndex % THEME.length];
-        note(t, freq, beats * beat * 0.92, 0.26);
-
-        const dur = beats * beat;
-        stepIndex++;
-        loopTimer = setTimeout(step, dur * 1000);
-      }
-      step();
-    }
+    let started = false, muted = false;
 
     function start() {
       if (started) return;
       started = true;
-      init();
-      if (ctx.state === 'suspended') ctx.resume();
-      startDrone();
-      stinger(3.75);
-      setTimeout(scheduleLoop, 5900);
+      bgMusic.play().catch(() => {
+        // autoplay blocked — will retry on next user gesture via unlockAudio()
+        started = false;
+      });
     }
 
     function toggleMute() {
-      if (!ctx) { start(); return true; }
+      if (!started) { start(); return true; }
       muted = !muted;
-      master.gain.linearRampToValueAtTime(muted ? 0 : 1.15, ctx.currentTime + 0.15);
+      bgMusic.muted = muted;
       return !muted;
     }
 
