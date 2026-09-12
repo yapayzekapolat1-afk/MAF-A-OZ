@@ -84,8 +84,8 @@
     transform: translateY(22px) scale(0.85);
     filter: blur(6px);
     animation:
-      letterIn 0.7s cubic-bezier(.2,.8,.2,1) calc(5.9s + var(--d, 0s)) forwards,
-      shineSweep 4.5s ease-in-out calc(5.9s + var(--d, 0s) + 1.6s) infinite;
+      letterIn 0.7s cubic-bezier(.2,.8,.2,1) calc(8.6s + var(--d, 0s)) forwards,
+      shineSweep 4.5s ease-in-out calc(8.6s + var(--d, 0s) + 1.6s) infinite;
   }
   .brand h1 .accent {
     background-image: none;
@@ -112,7 +112,7 @@
     color: #d8c393;
     text-shadow: 0 2px 10px rgba(0,0,0,0.7);
     opacity: 0;
-    animation: fadeUp 0.8s ease 6.9s forwards;
+    animation: fadeUp 0.8s ease 9.6s forwards;
   }
   .divider {
     width: 46%;
@@ -304,7 +304,7 @@
     align-items: center;
     justify-content: center;
     background: radial-gradient(circle at 50% 45%, #14100a 0%, #060503 70%, #020201 100%);
-    animation: introOut 0.9s ease 5.0s forwards;
+    animation: introOut 1s ease 7.7s forwards;
   }
   @keyframes introOut {
     0%   { opacity: 1; }
@@ -332,18 +332,18 @@
     color: #e9dcb8;
     font-style: italic;
     text-shadow: 0 2px 14px rgba(0,0,0,0.8);
-    animation: introFade 1.7s ease forwards;
+    animation: introFade 2.6s ease forwards;
   }
-  .intro-line.l1 { animation-delay: 0.35s; }
-  .intro-line.l2 { animation-delay: 2.05s; }
+  .intro-line.l1 { animation-delay: 0.5s; }
+  .intro-line.l2 { animation-delay: 3.1s; }
   .intro-line.l3 {
     font-size: clamp(30px, 9.5vw, 46px);
     font-weight: 900;
     letter-spacing: 3px;
     color: var(--blood-bright);
     text-shadow: 0 0 10px rgba(193,39,45,0.55), 0 0 30px rgba(193,39,45,0.4), 0 2px 14px rgba(0,0,0,0.8);
-    animation: introFadeStrong 1.85s ease forwards;
-    animation-delay: 3.7s;
+    animation: introFadeStrong 2.6s ease forwards;
+    animation-delay: 5.7s;
   }
   @keyframes introFade {
     0%   { opacity: 0; letter-spacing: 9px; }
@@ -362,7 +362,7 @@
   /* main content waits for the intro to finish before revealing itself */
   .content {
     opacity: 0;
-    animation: contentFadeIn 0.9s ease 5.7s forwards;
+    animation: contentFadeIn 0.9s ease 8.4s forwards;
   }
   @keyframes contentFadeIn {
     0%   { opacity: 0; transform: translateY(8px); }
@@ -385,8 +385,11 @@
   #soundToggle svg { width: 20px; height: 20px; display: block; }
   #soundToggle:active { transform: scale(0.92); }
 </style>
+
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' data: gap: file: content: https://ssl.gstatic.com 'unsafe-eval'; style-src 'self' 'unsafe-inline'; media-src 'self' file: content: data:; img-src 'self' data: content:;">
 </head>
 <body>
+<script type="text/javascript" src="cordova.js"></script>
 
 <div id="screen">
   <div id="rain"></div>
@@ -412,11 +415,16 @@
   </div>
 
   <!--
-    Background music: put your own audio file next to this HTML file
-    (same folder, e.g. /www/mafia_theme.m4a) and it will play automatically.
-    Nothing is embedded here — this just points at a local file.
+    Background music: put a file named "mafia_theme" next to this HTML file
+    (same folder, e.g. www/mafia_theme.m4a — .mp3 and .ogg also work) and it
+    will play automatically. Nothing is embedded here — this just points at
+    a local file that the build workflow copies in for you.
   -->
-  <audio id="bgMusic" src="mafia_theme.m4a" loop preload="auto"></audio>
+  <audio id="bgMusic" loop preload="auto">
+    <source src="mafia_theme.m4a" type="audio/mp4">
+    <source src="mafia_theme.mp3" type="audio/mpeg">
+    <source src="mafia_theme.ogg" type="audio/ogg">
+  </audio>
 
   <div class="content">
     <div class="brand">
@@ -529,6 +537,13 @@
   const iconOff = document.getElementById('iconSoundOff');
 
   function requestFullscreen() {
+    // Native Android immersive mode (hides status bar AND the nav/soft keys).
+    // Only available once Cordova has fired 'deviceready' and the plugin is installed.
+    if (window.AndroidFullScreen) {
+      window.AndroidFullScreen.immersiveMode(function () {}, function () {});
+      return;
+    }
+    // Fallback for plain browsers (desktop testing, non-Cordova builds)
     const el = document.documentElement;
     const req = el.requestFullscreen || el.webkitRequestFullscreen ||
                 el.mozRequestFullScreen || el.msRequestFullscreen;
@@ -537,6 +552,11 @@
       window.screen.orientation.lock('portrait').catch(() => {});
     }
   }
+
+  // Wait for Cordova before touching AndroidFullScreen; re-apply on resume
+  // because Android re-shows the nav bar after some system events/keyboard use.
+  document.addEventListener('deviceready', requestFullscreen, false);
+  document.addEventListener('resume', requestFullscreen, false);
 
   function unlockAudio() {
     MafiaAudio.start();
