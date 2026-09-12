@@ -29,9 +29,76 @@ jobs:
         run: |
           cordova create app com.mafiaioz.app "Mafia IOZ"
           cp www/index.html app/www/index.html
-          if [ -f www/mafia_theme.m4a ]; then cp www/mafia_theme.m4a app/www/mafia_theme.m4a; fi
+          # copy the background music, whatever format it's in
+          # (put a file literally named "mafia_theme.m4a" / ".mp3" / ".ogg"
+          #  next to index.html in your repo's www/ folder)
+          shopt -s nullglob
+          music_found=0
+          for f in www/mafia_theme.*; do
+            cp "$f" "app/www/$(basename "$f")"
+            music_found=1
+          done
+          if [ "$music_found" -eq 0 ]; then
+            echo "::error::No www/mafia_theme.* file found in the repo -- the app will build WITHOUT background music. Add a file named exactly 'mafia_theme.m4a' (or .mp3/.ogg) inside the www/ folder and push it."
+            exit 1
+          else
+            echo "Music file(s) copied into app/www:"
+            ls -la app/www/mafia_theme.*
+          fi
+
+      - name: Add app icon
+        run: |
+          # put a square PNG (e.g. 1024x1024) at www/icon.png in your repo
+          if [ -f www/icon.png ]; then
+            mkdir -p app/res
+            cp www/icon.png app/res/icon.png
+          else
+            echo "::warning::www/icon.png not found -- the app will use the default Cordova icon."
+          fi
+
+      - name: Configure fullscreen + icon in config.xml
+        run: |
+          cd app
+          python3 - <<'PY'
+          import os
+
+          with open('config.xml', 'r', encoding='utf-8') as f:
+              xml = f.read()
+
+          # Force true native fullscreen (hides Android status + nav bar)
+          if '<preference name="Fullscreen"' not in xml:
+              xml = xml.replace(
+                  '</widget>',
+                  '    <preference name="Fullscreen" value="true" />\n</widget>'
+              )
+
+          # Wire up the icon if we copied one in
+          if os.path.exists('res/icon.png'):
+              if '<platform name="android">' in xml:
+                  xml = xml.replace(
+                      '<platform name="android">',
+                      '<platform name="android">\n        <icon src="res/icon.png" />',
+                      1
+                  )
+              else:
+                  xml = xml.replace(
+                      '</widget>',
+                      '    <platform name="android">\n        <icon src="res/icon.png" />\n    </platform>\n</widget>'
+                  )
+
+          with open('config.xml', 'w', encoding='utf-8') as f:
+              f.write(xml)
+          PY
+
+      - name: Add Android platform
+        run: |
           cd app
           cordova platform add android
+
+      - name: Add fullscreen plugin
+        run: |
+          cd app
+          cordova plugin add cordova-plugin-fullscreen
 
       - name: Build unsigned debug APK
         run: |
